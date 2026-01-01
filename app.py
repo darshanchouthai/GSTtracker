@@ -1,0 +1,567 @@
+from flask import Flask, render_template, request, send_file, redirect
+import mysql.connector
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+import io
+
+app = Flask(__name__)
+
+# ---------------- DATABASE CONFIG ----------------
+DB_HOST = 'localhost'
+DB_USER = 'root'
+DB_PASS = 'Darshan@2003'
+DB_NAME = 'invoice_db'
+
+def get_next_invoice_no():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(CAST(invoice_no AS UNSIGNED)) FROM invoices")
+    result = cur.fetchone()[0]
+    conn.close()
+    return str(result + 1) if result else "1"
+
+
+def init_db():
+    conn = mysql.connector.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS
+    )
+    cur = conn.cursor()
+
+    # Create DB
+    cur.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
+    cur.execute(f"USE {DB_NAME}")
+
+    # INVOICES TABLE (HEADER)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS invoices (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            invoice_no VARCHAR(50) UNIQUE NOT NULL,
+            invoice_date DATE NOT NULL,
+            base_amount DECIMAL(10,2) NOT NULL,
+            cgst_amount DECIMAL(10,2) NOT NULL,
+            sgst_amount DECIMAL(10,2) NOT NULL,
+            total_amount DECIMAL(10,2) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # INVOICE ITEMS TABLE (LINE ITEMS)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS invoice_items (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            invoice_id INT NOT NULL,
+            description TEXT NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
+            FOREIGN KEY (invoice_id)
+                REFERENCES invoices(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME
+    )
+
+# ---------------- PDF GENERATION ----------------
+def generate_invoice_pdf(data):
+    # ---- BANK DETAILS (ACTUAL / MASKED SUPPORT) ----
+    account_no = data.get("account_no", "375901010032777")
+    ifsc_code = data.get("ifsc", "UBIN0537594")
+
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    left, right = 40, width - 40
+    top, bottom = height - 40, 40
+
+    # Outer Border
+    c.rect(left, bottom, right - left, top - bottom)
+
+    # ---------------- HEADER ----------------
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(left + 10, top - 30, "GURUKRUPA EARTHMOVERS")
+
+    c.setFont("Helvetica", 9)
+    c.drawString(left + 10, top - 48,
+                 "735 A PLOT NO 86, ATHANI ROAD BHIRAV NAGAR VIJAYAPUR - 586101")
+    c.drawString(left + 10, top - 62,
+                 "Taluk: Dist: Vijayapura | Mobile: 9448025191")
+    c.drawString(left + 10, top - 76,
+                 "Email: gcmukund@gmail.com")
+
+    # TAX INVOICE
+    c.setFont("Helvetica-Bold", 11)
+    c.drawCentredString(width / 2, top - 105, "TAX INVOICE")
+
+    # Invoice Meta (BELOW TAX INVOICE)
+    meta_x = right - 210
+    meta_y = top - 130
+
+    c.setFont("Helvetica", 9)
+    c.drawString(meta_x, meta_y,        f"Date: {data['invoice_date']}")
+    c.drawString(meta_x, meta_y - 14,   f"Invoice No.: {data['invoice_no']}")
+    c.drawString(meta_x, meta_y - 28,   "WO Number: 6000000055")
+    c.drawString(meta_x, meta_y - 42,   "Our PAN No: AHSPC4247N")
+    c.drawString(meta_x, meta_y - 56,   "Our GST No: 29AHSPC4247N1ZP")
+
+    # Separator
+    c.line(left, meta_y - 70, right, meta_y - 70)
+
+    # ---------------- TO / SHIP TO ----------------
+    box_top = meta_y - 70
+    box_bottom = box_top - 90
+    mid = width / 2
+
+    c.rect(left, box_bottom, right - left, 90)
+    c.line(mid, box_top, mid, box_bottom)
+
+    # To
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(left + 8, box_top - 15, "To,")
+    c.setFont("Helvetica", 9)
+    c.drawString(left + 8, box_top - 30, "Aakshya Infra Projects PVT LTD")
+    c.drawString(left + 8, box_top - 45,
+                 "Flat No: F2 MANYATA MAHOGANY F2")
+    c.drawString(left + 8, box_top - 60,
+                 "Manyata Tech Park Road, Bangalore - 560045")
+    c.drawString(left + 8, box_top - 75,
+                 "GST No: 29AAXCA0889M1ZL")
+
+    # Ship To
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(mid + 8, box_top - 15, "(Ship To)")
+    c.setFont("Helvetica", 9)
+    c.drawString(mid + 8, box_top - 30,
+                 "AAKSHYA INFRA PROJECTS PVT LTD")
+    c.drawString(mid + 8, box_top - 45,
+                 "Administration Block, Kempegowda International")
+    c.drawString(mid + 8, box_top - 60,
+                 "Airport, Devanahalli, Bengaluru - 560300")
+
+    # ---------------- MAIN TABLE ----------------
+    table_top = box_bottom
+    table_bottom = table_top - 260
+
+    col_sl = left + 50
+    col_desc = right - 120
+
+    c.rect(left, table_bottom, right - left, table_top - table_bottom)
+    c.line(col_sl, table_top, col_sl, table_bottom)
+    c.line(col_desc, table_top, col_desc, table_bottom)
+
+    # Header Row
+    c.line(left, table_top - 25, right, table_top - 25)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString((left + col_sl) / 2, table_top - 18, "SL No")
+    c.drawCentredString((col_sl + col_desc) / 2, table_top - 18, "Description")
+    c.drawCentredString((col_desc + right) / 2, table_top - 18, "Total Amount")
+
+    # Item
+# ----- ROW LAYOUT CONFIG -----
+    row_height = 30        # visual row height (matches your image)
+    font_size = 9
+    baseline_adjust = 8   # fine-tune if needed
+
+    # Start FIRST row exactly below header line
+    row_top = table_top - 25
+
+    for i, (desc, amt) in enumerate(zip(data['descriptions'], data['amounts']), start=1):
+        # Calculate vertical center for text
+        text_y = row_top - (row_height / 2) + (font_size / 2) - baseline_adjust
+
+        c.setFont("Helvetica", font_size)
+
+        # SL No
+        c.drawCentredString((left + col_sl) / 2, text_y, str(i))
+
+        # Description
+        c.drawString(col_sl + 8, text_y, desc)
+
+        # Amount
+        c.drawRightString(right - 10, text_y, f"{amt:.2f}")
+
+        # Draw bottom border of the row
+        c.line(left, row_top - row_height, right, row_top - row_height)
+
+        # Move to next row
+        row_top -= row_height
+
+
+
+
+    # ---------------- TAX ROWS ----------------
+# ---------------- TAX ROWS (MATCHING SCANNED INVOICE) ----------------
+
+    tax_start_y = table_bottom + 120
+    row_gap = 22
+
+    def tax_row(label, value, y, bold=False, size=9):
+        c.setFont("Helvetica-Bold" if bold else "Helvetica", size)
+
+        # Horizontal line across TOTAL AMOUNT column
+        c.line(col_desc, y + 12, right, y + 12)
+
+        # Label just LEFT of the Total Amount column (right aligned)
+        c.drawRightString(col_desc - 10, y, label)
+
+        # Amount inside Total Amount column (right aligned)
+        c.drawRightString(right - 10, y, f"{value:.2f}")
+
+
+    tax_row("CGST @ 9%", data['cgst_amount'], tax_start_y)
+    tax_row("SGST @ 9%", data['sgst_amount'], tax_start_y - row_gap)
+    tax_row("Sub Total", data['total_amount'], tax_start_y - row_gap * 2, bold=True)
+
+    # GRAND TOTAL
+    tax_row("GRAND TOTAL", data['total_amount'],
+            tax_start_y - row_gap * 3, bold=True, size=10)
+
+    # ---------------- BANK DETAILS ----------------
+    bank_y = table_bottom - 20
+
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(left + 10, bank_y, "Our Bank Details:")
+
+    c.setFont("Helvetica", 9)
+    c.drawString(left + 10, bank_y - 14,
+                f"Account No: {account_no}")
+    c.drawString(left + 10, bank_y - 28,
+                "Bank Name: Union Bank of India")
+    c.drawString(left + 10, bank_y - 42,
+                "Branch: BLDE Road Vijayapur")
+    c.drawString(left + 10, bank_y - 56,
+                f"IFSC Code: {ifsc_code}")
+
+
+    # ---------------- SIGNATURE ----------------
+    sign_y = bank_y - 100
+    
+    c.setFont("Helvetica", 9)
+    c.drawString(right - 165, sign_y - 35,
+                 "Authorized Signatory")
+
+   # ---------------- FOOTER NOTE (INSIDE BOX) ----------------
+
+    note_y = bottom + 20   # inside the box, above bottom border
+
+    c.setFont("Helvetica", 8)
+    c.drawString(
+        left + 10,
+        note_y,
+        "Note: Please make payment by Transfer/Cheque/DD in favor of "
+        "Shri Mukund G Chouthai proprietor of Gurukrupa Earthmovers."
+    )
+
+
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+# ---------------- ROUTES ----------------
+@app.route('/')
+def index():
+    next_invoice_no = get_next_invoice_no()
+    return render_template('index.html', invoice_no=next_invoice_no)
+
+@app.route('/invoice/<int:invoice_id>/pdf')
+def download_invoice_pdf(invoice_id):
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    # 1️⃣ Fetch invoice header
+    cur.execute("""
+        SELECT *
+        FROM invoices
+        WHERE id = %s
+    """, (invoice_id,))
+    invoice = cur.fetchone()
+
+    if not invoice:
+        conn.close()
+        return "Invoice not found", 404
+
+    # 2️⃣ Fetch invoice items (exact rows)
+    cur.execute("""
+        SELECT description, amount
+        FROM invoice_items
+        WHERE invoice_id = %s
+        ORDER BY id ASC
+    """, (invoice_id,))
+    items = cur.fetchall()
+
+    conn.close()
+
+    # Safety check
+    if not items:
+        return "No items found for this invoice", 400
+
+    # Separate lists for PDF generator
+    descriptions = [item['description'] for item in items]
+    amounts = [float(item['amount']) for item in items]
+
+    # 3️⃣ Generate PDF with exact data
+    pdf = generate_invoice_pdf({
+        "invoice_no": invoice['invoice_no'],
+        "invoice_date": invoice['invoice_date'],
+        "descriptions": descriptions,
+        "amounts": amounts,
+        "base_amount": float(invoice['base_amount']),
+        "cgst_amount": float(invoice['cgst_amount']),
+        "sgst_amount": float(invoice['sgst_amount']),
+        "total_amount": float(invoice['total_amount'])
+    })
+
+    return send_file(
+        pdf,
+        as_attachment=True,
+        download_name=f"Invoice_{invoice['invoice_no']}.pdf",
+        mimetype="application/pdf"
+    )
+
+
+
+@app.route('/edit/<int:invoice_id>', methods=['GET', 'POST'])
+def edit_invoice(invoice_id):
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    if request.method == 'POST':
+        invoice_no = request.form['invoice_no']
+        invoice_date = request.form['invoice_date']
+
+        descriptions = request.form.getlist('description[]')
+        amounts = request.form.getlist('amount[]')
+        amounts = [float(a) for a in amounts]
+
+        # Recalculate totals
+        base_amount = round(sum(amounts), 2)
+        cgst = round(base_amount * 0.09, 2)
+        sgst = round(base_amount * 0.09, 2)
+        total = round(base_amount + cgst + sgst, 2)
+
+        # 1️⃣ Update invoice header
+        cur.execute("""
+            UPDATE invoices SET
+                invoice_no=%s,
+                invoice_date=%s,
+                base_amount=%s,
+                cgst_amount=%s,
+                sgst_amount=%s,
+                total_amount=%s
+            WHERE id=%s
+        """, (
+            invoice_no,
+            invoice_date,
+            base_amount,
+            cgst,
+            sgst,
+            total,
+            invoice_id
+        ))
+
+        # 2️⃣ Delete old items
+        cur.execute("DELETE FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+
+        # 3️⃣ Insert updated items
+        for desc, amt in zip(descriptions, amounts):
+            cur.execute("""
+                INSERT INTO invoice_items (invoice_id, description, amount)
+                VALUES (%s,%s,%s)
+            """, (invoice_id, desc, amt))
+
+        conn.commit()
+        conn.close()
+        return redirect('/history')
+
+    # ---------------- GET REQUEST ----------------
+
+    # Fetch invoice header
+    cur.execute("SELECT * FROM invoices WHERE id=%s", (invoice_id,))
+    invoice = cur.fetchone()
+
+    if not invoice:
+        conn.close()
+        return "Invoice not found", 404
+
+    # Fetch invoice items
+    cur.execute("""
+        SELECT id, description, amount
+        FROM invoice_items
+        WHERE invoice_id=%s
+        ORDER BY id ASC
+    """, (invoice_id,))
+    items = cur.fetchall()
+
+    conn.close()
+
+    return render_template(
+        'edit.html',
+        invoice=invoice,
+        items=items
+    )
+
+
+
+@app.route('/calculate', methods=['POST'])
+def calculate():
+    try:
+        invoice_no = request.form['invoice_no']
+        invoice_date = request.form['invoice_date']
+
+        # MULTIPLE ITEMS
+        descriptions = request.form.getlist('description[]')
+        amounts = request.form.getlist('amount[]')
+
+        if not descriptions or not amounts:
+            return "No invoice items provided", 400
+
+        amounts = [float(a) for a in amounts]
+
+        # CALCULATIONS
+        base_amount = round(sum(amounts), 2)
+        cgst = round(base_amount * 0.09, 2)
+        sgst = round(base_amount * 0.09, 2)
+        total = round(base_amount + cgst + sgst, 2)
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # 1️⃣ INSERT INVOICE HEADER
+        cur.execute("""
+            INSERT INTO invoices
+            (invoice_no, invoice_date, base_amount,
+             cgst_amount, sgst_amount, total_amount)
+            VALUES (%s,%s,%s,%s,%s,%s)
+        """, (
+            invoice_no,
+            invoice_date,
+            base_amount,
+            cgst,
+            sgst,
+            total
+        ))
+
+        invoice_id = cur.lastrowid  # IMPORTANT
+
+        # 2️⃣ INSERT EACH ITEM
+        for desc, amt in zip(descriptions, amounts):
+            cur.execute("""
+                INSERT INTO invoice_items
+                (invoice_id, description, amount)
+                VALUES (%s,%s,%s)
+            """, (invoice_id, desc, amt))
+
+        conn.commit()
+        conn.close()
+
+        # PDF
+        pdf = generate_invoice_pdf({
+            "invoice_no": invoice_no,
+            "invoice_date": invoice_date,
+            "descriptions": descriptions,
+            "amounts": amounts,
+            "base_amount": base_amount,
+            "cgst_amount": cgst,
+            "sgst_amount": sgst,
+            "total_amount": total
+        })
+
+        return send_file(
+            pdf,
+            as_attachment=True,
+            download_name=f"Invoice_{invoice_no}.pdf",
+            mimetype="application/pdf"
+        )
+
+    except Exception as e:
+        return f"Error occurred: {e}", 500
+
+
+@app.route('/history')
+def history():
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT 
+            i.id,
+            i.invoice_no,
+            i.invoice_date,
+            i.base_amount,
+            i.cgst_amount,
+            i.sgst_amount,
+            i.total_amount,
+            COUNT(it.id) AS item_count
+        FROM invoices i
+        LEFT JOIN invoice_items it
+            ON i.id = it.invoice_id
+        GROUP BY i.id
+        ORDER BY CAST(i.invoice_no AS UNSIGNED) DESC
+    """)
+
+    invoices = cur.fetchall()
+    conn.close()
+
+    return render_template('history.html', invoices=invoices)
+
+@app.route('/invoice/<int:invoice_id>/masked-pdf')
+def download_masked_invoice_pdf(invoice_id):
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    # Invoice header
+    cur.execute("SELECT * FROM invoices WHERE id=%s", (invoice_id,))
+    invoice = cur.fetchone()
+
+    if not invoice:
+        conn.close()
+        return "Invoice not found", 404
+
+    # Invoice items
+    cur.execute("""
+        SELECT description, amount
+        FROM invoice_items
+        WHERE invoice_id=%s
+        ORDER BY id ASC
+    """, (invoice_id,))
+    items = cur.fetchall()
+    conn.close()
+
+    descriptions = [i['description'] for i in items]
+    amounts = [float(i['amount']) for i in items]
+
+    # 🔥 PASS MASKED VALUES DIRECTLY
+    pdf = generate_invoice_pdf({
+        "invoice_no": invoice['invoice_no'],
+        "invoice_date": invoice['invoice_date'],
+        "descriptions": descriptions,
+        "amounts": amounts,
+        "base_amount": float(invoice['base_amount']),
+        "cgst_amount": float(invoice['cgst_amount']),
+        "sgst_amount": float(invoice['sgst_amount']),
+        "total_amount": float(invoice['total_amount']),
+
+        # Masked bank details
+        "account_no": "XXXXXXXX2777",
+        "ifsc": "UBIN0XXXXX"
+    })
+
+    return send_file(
+        pdf,
+        as_attachment=True,
+        download_name=f"Invoice_{invoice['invoice_no']}_MASKED.pdf",
+        mimetype="application/pdf"
+    )
+
+
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True)
