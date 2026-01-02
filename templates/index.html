@@ -41,16 +41,77 @@
             </div>
         </div>
 
-        <!-- ITEMS -->
+        <!-- ================= TO ADDRESS ================= -->
+        <div class="form-group">
+            <label>To (Billing Address):</label>
+
+            <select onchange="fillToAddress(this.value)" style="width:100%; padding:8px;">
+                <option value="">-- Select Party --</option>
+
+                <option value="Aakshya Infra Projects PVT LTD
+Flat No: F2 MANYATA MAHOGANY F2
+MANYATA TECH PARK ROAD
+Bangalore Urban-560045
+Karnataka State
+GST No: 29AAXCA0889M1ZL">
+                    Aakshya Infra Projects
+                </option>
+
+                <option value="Ashok Buildcon Limited
+Sury No 69, Village – Neralgi Hobli
+Angodu Taluka
+Davanagere – Neralgi – Davanagere
+Karnataka Pin Code-577226
+GST No: 29AABCA9292J1Z6">
+                    Ashok Buildcon – Davanagere
+                </option>
+
+                <option value="Ashok Buildcon Limited
+Tumakur
+Sector No 1
+Tumakur Sec 1
+GST No: 29AABCA9292J1Z6">
+                    Ashok Buildcon – Tumkur Sec 1
+                </option>
+
+                <option value="Ashok Buildcon Limited
+Tumakur
+Sector No 2
+Tumakur Sec II
+GST No: 29AABCA9292J1Z6">
+                    Ashok Buildcon – Tumkur Sec 2
+                </option>
+            </select>
+
+            <textarea name="to_address" id="to_address" rows="6"
+                      placeholder="Billing address will appear here"
+                      required style="margin-top:10px;"></textarea>
+        </div>
+
+        <!-- ================= SHIP TO (OPTIONAL) ================= -->
+        <div class="form-group">
+            <label>
+                <input type="checkbox" onclick="toggleShipTo()"> Ship To Required
+            </label>
+        </div>
+
+        <div class="form-group" id="shipToBlock" style="display:none;">
+    <label>Ship To Address:</label>
+    <textarea name="ship_to_address"
+              id="ship_to_address"
+              rows="6"
+              placeholder="Shipping address"></textarea>
+</div>
+
+
+        <!-- ================= ITEMS ================= -->
         <label style="margin-top:20px;">Invoice Items:</label>
 
         <div id="items">
-
             <div class="item-row">
                 <div class="form-group">
                     <div class="input-wrapper">
-                        <input type="text" name="description[]" 
-                               placeholder="Description"
+                        <input type="text" name="description[]"
                                value="JCB 205: Excavator work done charges"
                                required>
                         <i class="fas fa-pen"></i>
@@ -59,22 +120,17 @@
 
                 <div class="form-group">
                     <div class="input-wrapper">
-                        <input type="number" step="0.01" name="amount[]" 
-                               placeholder="Amount (INR)"
-                               required>
+                        <input type="number" step="0.01" name="amount[]" required>
                         <i class="fas fa-rupee-sign"></i>
                     </div>
                 </div>
             </div>
-
         </div>
 
-        <!-- ADD ITEM BUTTON -->
         <button type="button" onclick="addItem()" style="background:#007bff;">
             <i class="fas fa-plus"></i> Add Another Item
         </button>
 
-        <!-- SUBMIT -->
         <button type="submit">
             Generate Invoice & Save <i class="fas fa-arrow-right"></i>
         </button>
@@ -82,31 +138,58 @@
     </form>
 </div>
 
-<!-- SCRIPT -->
+<!-- ================= SCRIPT ================= -->
 <script>
 function addItem() {
     const itemsDiv = document.getElementById("items");
-
     const div = document.createElement("div");
     div.className = "item-row";
 
     div.innerHTML = `
         <div class="form-group">
             <div class="input-wrapper">
-                <input type="text" name="description[]" placeholder="Description" required>
+                <input type="text" name="description[]" required>
                 <i class="fas fa-pen"></i>
             </div>
         </div>
-
         <div class="form-group">
             <div class="input-wrapper">
-                <input type="number" step="0.01" name="amount[]" placeholder="Amount (INR)" required>
+                <input type="number" step="0.01" name="amount[]" required>
                 <i class="fas fa-rupee-sign"></i>
             </div>
         </div>
     `;
-
     itemsDiv.appendChild(div);
+}
+
+function fillToAddress(value) {
+    if (value) {
+        document.getElementById("to_address").value = value;
+    }
+}
+
+function toggleShipTo() {
+    const block = document.getElementById("shipToBlock");
+    block.style.display = block.style.display === "none" ? "block" : "none";
+}
+const FIXED_SHIP_TO_ADDRESS = `AAKSHYA INFRA PROJECTS PVT LTD
+ADMINISTRATION BLOCK, Kempegowda International
+Airport Devanahalli, Bengaluru, Bengaluru Urban
+Karnataka 560300
+Karnataka State
+GST No- 29AAXCA0889M1ZL`;
+
+function toggleShipTo() {
+    const block = document.getElementById("shipToBlock");
+    const textarea = document.getElementById("ship_to_address");
+
+    if (block.style.display === "none") {
+        block.style.display = "block";
+        textarea.value = FIXED_SHIP_TO_ADDRESS;
+    } else {
+        block.style.display = "none";
+        textarea.value = "";
+    }
 }
 </script>
 

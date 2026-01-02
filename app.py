@@ -36,15 +36,22 @@ def init_db():
     # INVOICES TABLE (HEADER)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS invoices (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            invoice_no VARCHAR(50) UNIQUE NOT NULL,
-            invoice_date DATE NOT NULL,
-            base_amount DECIMAL(10,2) NOT NULL,
-            cgst_amount DECIMAL(10,2) NOT NULL,
-            sgst_amount DECIMAL(10,2) NOT NULL,
-            total_amount DECIMAL(10,2) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    invoice_no VARCHAR(50) UNIQUE NOT NULL,
+    invoice_date DATE NOT NULL,
+
+    -- NEW ADDRESS FIELDS
+    to_address TEXT NOT NULL,
+    ship_to_address TEXT NULL,
+
+    base_amount DECIMAL(10,2) NOT NULL,
+    cgst_amount DECIMAL(10,2) NOT NULL,
+    sgst_amount DECIMAL(10,2) NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+
     """)
 
     # INVOICE ITEMS TABLE (LINE ITEMS)
@@ -117,34 +124,40 @@ def generate_invoice_pdf(data):
 
     # ---------------- TO / SHIP TO ----------------
     box_top = meta_y - 70
-    box_bottom = box_top - 90
+    box_bottom = box_top - 120
+    # ---------------- TO / SHIP TO ----------------
+    box_height = 110
     mid = width / 2
 
-    c.rect(left, box_bottom, right - left, 90)
-    c.line(mid, box_top, mid, box_bottom)
+    has_ship_to = bool(data.get("ship_to_address"))
 
-    # To
+    # Draw outer box
+    c.rect(left, box_top - box_height, right - left, box_height)
+
+    # Draw middle divider ONLY if Ship To exists
+    if has_ship_to:
+        c.line(mid, box_top, mid, box_top - box_height)
+
+    # ---------- TO ----------
     c.setFont("Helvetica-Bold", 9)
     c.drawString(left + 8, box_top - 15, "To,")
-    c.setFont("Helvetica", 9)
-    c.drawString(left + 8, box_top - 30, "Aakshya Infra Projects PVT LTD")
-    c.drawString(left + 8, box_top - 45,
-                 "Flat No: F2 MANYATA MAHOGANY F2")
-    c.drawString(left + 8, box_top - 60,
-                 "Manyata Tech Park Road, Bangalore - 560045")
-    c.drawString(left + 8, box_top - 75,
-                 "GST No: 29AAXCA0889M1ZL")
 
-    # Ship To
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(mid + 8, box_top - 15, "(Ship To)")
     c.setFont("Helvetica", 9)
-    c.drawString(mid + 8, box_top - 30,
-                 "AAKSHYA INFRA PROJECTS PVT LTD")
-    c.drawString(mid + 8, box_top - 45,
-                 "Administration Block, Kempegowda International")
-    c.drawString(mid + 8, box_top - 60,
-                 "Airport, Devanahalli, Bengaluru - 560300")
+    y = box_top - 30
+    for line in data['to_address'].splitlines():
+        c.drawString(left + 8, y, line)
+        y -= 14
+
+    # ---------- SHIP TO (OPTIONAL) ----------
+    if has_ship_to:
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(mid + 8, box_top - 15, "(Ship To)")
+
+        c.setFont("Helvetica", 9)
+        y = box_top - 30
+        for line in data['ship_to_address'].splitlines():
+            c.drawString(mid + 8, y, line)
+            y -= 14
 
     # ---------------- MAIN TABLE ----------------
     table_top = box_bottom
@@ -242,7 +255,7 @@ def generate_invoice_pdf(data):
 
 
     # ---------------- SIGNATURE ----------------
-    sign_y = bank_y - 100
+    sign_y = bank_y - 90
     
     c.setFont("Helvetica", 9)
     c.drawString(right - 165, sign_y - 35,
@@ -250,7 +263,7 @@ def generate_invoice_pdf(data):
 
    # ---------------- FOOTER NOTE (INSIDE BOX) ----------------
 
-    note_y = bottom + 20   # inside the box, above bottom border
+    note_y = bottom + 5   # inside the box, above bottom border
 
     c.setFont("Helvetica", 8)
     c.drawString(
@@ -276,7 +289,7 @@ def download_invoice_pdf(invoice_id):
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
 
-    # 1️⃣ Fetch invoice header
+    # 1️⃣ Fetch invoice header (NOW INCLUDES ADDRESSES)
     cur.execute("""
         SELECT *
         FROM invoices
@@ -288,7 +301,7 @@ def download_invoice_pdf(invoice_id):
         conn.close()
         return "Invoice not found", 404
 
-    # 2️⃣ Fetch invoice items (exact rows)
+    # 2️⃣ Fetch invoice items
     cur.execute("""
         SELECT description, amount
         FROM invoice_items
@@ -299,20 +312,26 @@ def download_invoice_pdf(invoice_id):
 
     conn.close()
 
-    # Safety check
     if not items:
         return "No items found for this invoice", 400
 
-    # Separate lists for PDF generator
+    # 3️⃣ Prepare data for PDF
     descriptions = [item['description'] for item in items]
     amounts = [float(item['amount']) for item in items]
 
-    # 3️⃣ Generate PDF with exact data
     pdf = generate_invoice_pdf({
         "invoice_no": invoice['invoice_no'],
         "invoice_date": invoice['invoice_date'],
+
+        # ✅ NEW ADDRESS FIELDS
+        "to_address": invoice['to_address'],
+        "ship_to_address": invoice['ship_to_address'],
+
+        # ITEMS
         "descriptions": descriptions,
         "amounts": amounts,
+
+        # TOTALS
         "base_amount": float(invoice['base_amount']),
         "cgst_amount": float(invoice['cgst_amount']),
         "sgst_amount": float(invoice['sgst_amount']),
@@ -328,6 +347,7 @@ def download_invoice_pdf(invoice_id):
 
 
 
+
 @app.route('/edit/<int:invoice_id>', methods=['GET', 'POST'])
 def edit_invoice(invoice_id):
     conn = get_db_connection()
@@ -337,29 +357,43 @@ def edit_invoice(invoice_id):
         invoice_no = request.form['invoice_no']
         invoice_date = request.form['invoice_date']
 
+        # ✅ ADDRESSES
+        to_address = request.form['to_address']
+        ship_to_address = request.form.get('ship_to_address') or None
+
+        # ITEMS
         descriptions = request.form.getlist('description[]')
         amounts = request.form.getlist('amount[]')
+
+        if not descriptions or not amounts:
+            conn.close()
+            return "No invoice items provided", 400
+
         amounts = [float(a) for a in amounts]
 
-        # Recalculate totals
+        # 🔢 RECALCULATE TOTALS
         base_amount = round(sum(amounts), 2)
         cgst = round(base_amount * 0.09, 2)
         sgst = round(base_amount * 0.09, 2)
         total = round(base_amount + cgst + sgst, 2)
 
-        # 1️⃣ Update invoice header
+        # 1️⃣ UPDATE INVOICE HEADER (INCLUDING ADDRESSES)
         cur.execute("""
             UPDATE invoices SET
-                invoice_no=%s,
-                invoice_date=%s,
-                base_amount=%s,
-                cgst_amount=%s,
-                sgst_amount=%s,
-                total_amount=%s
-            WHERE id=%s
+                invoice_no = %s,
+                invoice_date = %s,
+                to_address = %s,
+                ship_to_address = %s,
+                base_amount = %s,
+                cgst_amount = %s,
+                sgst_amount = %s,
+                total_amount = %s
+            WHERE id = %s
         """, (
             invoice_no,
             invoice_date,
+            to_address,
+            ship_to_address,
             base_amount,
             cgst,
             sgst,
@@ -367,14 +401,14 @@ def edit_invoice(invoice_id):
             invoice_id
         ))
 
-        # 2️⃣ Delete old items
-        cur.execute("DELETE FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+        # 2️⃣ REMOVE OLD ITEMS
+        cur.execute("DELETE FROM invoice_items WHERE invoice_id = %s", (invoice_id,))
 
-        # 3️⃣ Insert updated items
+        # 3️⃣ INSERT UPDATED ITEMS
         for desc, amt in zip(descriptions, amounts):
             cur.execute("""
                 INSERT INTO invoice_items (invoice_id, description, amount)
-                VALUES (%s,%s,%s)
+                VALUES (%s, %s, %s)
             """, (invoice_id, desc, amt))
 
         conn.commit()
@@ -383,19 +417,19 @@ def edit_invoice(invoice_id):
 
     # ---------------- GET REQUEST ----------------
 
-    # Fetch invoice header
-    cur.execute("SELECT * FROM invoices WHERE id=%s", (invoice_id,))
+    # FETCH INVOICE HEADER
+    cur.execute("SELECT * FROM invoices WHERE id = %s", (invoice_id,))
     invoice = cur.fetchone()
 
     if not invoice:
         conn.close()
         return "Invoice not found", 404
 
-    # Fetch invoice items
+    # FETCH ITEMS
     cur.execute("""
         SELECT id, description, amount
         FROM invoice_items
-        WHERE invoice_id=%s
+        WHERE invoice_id = %s
         ORDER BY id ASC
     """, (invoice_id,))
     items = cur.fetchall()
@@ -410,48 +444,63 @@ def edit_invoice(invoice_id):
 
 
 
+
 @app.route('/calculate', methods=['POST'])
 def calculate():
     try:
+        # ---------------- FORM DATA ----------------
         invoice_no = request.form['invoice_no']
         invoice_date = request.form['invoice_date']
 
-        # MULTIPLE ITEMS
         descriptions = request.form.getlist('description[]')
         amounts = request.form.getlist('amount[]')
 
+        to_address = request.form['to_address']
+        ship_to_address = request.form.get('ship_to_address')
+
+        # ---------------- VALIDATION ----------------
         if not descriptions or not amounts:
             return "No invoice items provided", 400
 
-        amounts = [float(a) for a in amounts]
+        if len(descriptions) != len(amounts):
+            return "Mismatch in invoice items", 400
 
-        # CALCULATIONS
+        # Convert amounts to float safely
+        try:
+            amounts = [float(a) for a in amounts]
+        except ValueError:
+            return "Invalid amount value", 400
+
+        # ---------------- CALCULATIONS ----------------
         base_amount = round(sum(amounts), 2)
         cgst = round(base_amount * 0.09, 2)
         sgst = round(base_amount * 0.09, 2)
         total = round(base_amount + cgst + sgst, 2)
 
+        # ---------------- DATABASE ----------------
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # 1️⃣ INSERT INVOICE HEADER
+        # INSERT INVOICE HEADER
         cur.execute("""
             INSERT INTO invoices
-            (invoice_no, invoice_date, base_amount,
-             cgst_amount, sgst_amount, total_amount)
-            VALUES (%s,%s,%s,%s,%s,%s)
+            (invoice_no, invoice_date, to_address, ship_to_address,
+             base_amount, cgst_amount, sgst_amount, total_amount)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             invoice_no,
             invoice_date,
+            to_address,
+            ship_to_address,
             base_amount,
             cgst,
             sgst,
             total
         ))
 
-        invoice_id = cur.lastrowid  # IMPORTANT
+        invoice_id = cur.lastrowid
 
-        # 2️⃣ INSERT EACH ITEM
+        # INSERT LINE ITEMS
         for desc, amt in zip(descriptions, amounts):
             cur.execute("""
                 INSERT INTO invoice_items
@@ -462,27 +511,17 @@ def calculate():
         conn.commit()
         conn.close()
 
-        # PDF
-        pdf = generate_invoice_pdf({
-            "invoice_no": invoice_no,
-            "invoice_date": invoice_date,
-            "descriptions": descriptions,
-            "amounts": amounts,
-            "base_amount": base_amount,
-            "cgst_amount": cgst,
-            "sgst_amount": sgst,
-            "total_amount": total
-        })
+        # ---------------- REDIRECT (PRG PATTERN) ----------------
+        # Redirect to PDF download (GET request)
+        return redirect(f"/invoice/{invoice_id}/pdf")
 
-        return send_file(
-            pdf,
-            as_attachment=True,
-            download_name=f"Invoice_{invoice_no}.pdf",
-            mimetype="application/pdf"
-        )
+    except mysql.connector.errors.IntegrityError:
+        # Duplicate invoice number protection
+        return "Invoice number already exists", 400
 
     except Exception as e:
         return f"Error occurred: {e}", 500
+
 
 
 @app.route('/history')
@@ -517,39 +556,56 @@ def download_masked_invoice_pdf(invoice_id):
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
 
-    # Invoice header
-    cur.execute("SELECT * FROM invoices WHERE id=%s", (invoice_id,))
+    # 1️⃣ Fetch invoice header
+    cur.execute("""
+        SELECT *
+        FROM invoices
+        WHERE id = %s
+    """, (invoice_id,))
     invoice = cur.fetchone()
 
     if not invoice:
         conn.close()
         return "Invoice not found", 404
 
-    # Invoice items
+    # 2️⃣ Fetch invoice items
     cur.execute("""
         SELECT description, amount
         FROM invoice_items
-        WHERE invoice_id=%s
+        WHERE invoice_id = %s
         ORDER BY id ASC
     """, (invoice_id,))
     items = cur.fetchall()
+
     conn.close()
 
-    descriptions = [i['description'] for i in items]
-    amounts = [float(i['amount']) for i in items]
+    if not items:
+        return "No items found for this invoice", 400
 
-    # 🔥 PASS MASKED VALUES DIRECTLY
+    # 3️⃣ Prepare item lists
+    descriptions = [item['description'] for item in items]
+    amounts = [float(item['amount']) for item in items]
+
+    # 4️⃣ Generate MASKED PDF
     pdf = generate_invoice_pdf({
         "invoice_no": invoice['invoice_no'],
         "invoice_date": invoice['invoice_date'],
+
+        # ✅ Addresses (NOT masked)
+        "to_address": invoice['to_address'],
+        "ship_to_address": invoice['ship_to_address'],
+
+        # Items
         "descriptions": descriptions,
         "amounts": amounts,
+
+        # Totals
         "base_amount": float(invoice['base_amount']),
         "cgst_amount": float(invoice['cgst_amount']),
         "sgst_amount": float(invoice['sgst_amount']),
         "total_amount": float(invoice['total_amount']),
 
-        # Masked bank details
+        # 🔒 MASKED BANK DETAILS ONLY
         "account_no": "XXXXXXXX2777",
         "ifsc": "UBIN0XXXXX"
     })
@@ -560,6 +616,7 @@ def download_masked_invoice_pdf(invoice_id):
         download_name=f"Invoice_{invoice['invoice_no']}_MASKED.pdf",
         mimetype="application/pdf"
     )
+
 
 
 if __name__ == '__main__':

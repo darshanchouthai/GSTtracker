@@ -247,3 +247,53 @@ tr:hover {
     top: 0;
     left: 0;
 }
+select {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    margin-top: 6px;
+}
+
+select:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.15);
+}
+
+/* ---------- ADDRESS TEXTAREA (TO / SHIP TO) ---------- */
+textarea {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    resize: vertical;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    background-color: #fafafa;
+}
+
+/* Placeholder text */
+textarea::placeholder {
+    color: #999;
+    font-size: 13px;
+}
+
+/* Focus effect */
+textarea:focus {
+    border-color: #007bff;
+    background-color: #fff;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.15);
+}
+
+/* ---------- OPTIONAL: SHIP TO BLOCK SPACING ---------- */
+#shipToBlock textarea {
+    margin-top: 6px;
+}
