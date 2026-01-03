@@ -45,42 +45,12 @@
         <div class="form-group">
             <label>To (Billing Address):</label>
 
-            <select onchange="fillToAddress(this.value)" style="width:100%; padding:8px;">
+            <select onchange="onPartyChange(this.value)" style="width:100%; padding:8px;">
                 <option value="">-- Select Party --</option>
-
-                <option value="Aakshya Infra Projects PVT LTD
-Flat No: F2 MANYATA MAHOGANY F2
-MANYATA TECH PARK ROAD
-Bangalore Urban-560045
-Karnataka State
-GST No: 29AAXCA0889M1ZL">
-                    Aakshya Infra Projects
-                </option>
-
-                <option value="Ashok Buildcon Limited
-Sury No 69, Village – Neralgi Hobli
-Angodu Taluka
-Davanagere – Neralgi – Davanagere
-Karnataka Pin Code-577226
-GST No: 29AABCA9292J1Z6">
-                    Ashok Buildcon – Davanagere
-                </option>
-
-                <option value="Ashok Buildcon Limited
-Tumakur
-Sector No 1
-Tumakur Sec 1
-GST No: 29AABCA9292J1Z6">
-                    Ashok Buildcon – Tumkur Sec 1
-                </option>
-
-                <option value="Ashok Buildcon Limited
-Tumakur
-Sector No 2
-Tumakur Sec II
-GST No: 29AABCA9292J1Z6">
-                    Ashok Buildcon – Tumkur Sec 2
-                </option>
+                <option value="AAKSHYA">Aakshya Infra Projects</option>
+                <option value="DAVANAGERE">Ashok Buildcon – Davanagere</option>
+                <option value="TUMKUR_1">Ashok Buildcon – Tumkur Sec 1</option>
+                <option value="TUMKUR_2">Ashok Buildcon – Tumkur Sec 2</option>
             </select>
 
             <textarea name="to_address" id="to_address" rows="6"
@@ -88,7 +58,15 @@ GST No: 29AABCA9292J1Z6">
                       required style="margin-top:10px;"></textarea>
         </div>
 
-        <!-- ================= SHIP TO (OPTIONAL) ================= -->
+        <!-- ================= WO NUMBER ================= -->
+        <div class="form-group">
+            <label>WO Number:</label>
+            <select name="wo_number" id="wo_number" required>
+                <option value="">-- Select WO Number --</option>
+            </select>
+        </div>
+
+        <!-- ================= SHIP TO ================= -->
         <div class="form-group">
             <label>
                 <input type="checkbox" onclick="toggleShipTo()"> Ship To Required
@@ -96,13 +74,9 @@ GST No: 29AABCA9292J1Z6">
         </div>
 
         <div class="form-group" id="shipToBlock" style="display:none;">
-    <label>Ship To Address:</label>
-    <textarea name="ship_to_address"
-              id="ship_to_address"
-              rows="6"
-              placeholder="Shipping address"></textarea>
-</div>
-
+            <label>Ship To Address:</label>
+            <textarea name="ship_to_address" id="ship_to_address" rows="6"></textarea>
+        </div>
 
         <!-- ================= ITEMS ================= -->
         <label style="margin-top:20px;">Invoice Items:</label>
@@ -112,8 +86,7 @@ GST No: 29AABCA9292J1Z6">
                 <div class="form-group">
                     <div class="input-wrapper">
                         <input type="text" name="description[]"
-                               value="JCB 205: Excavator work done charges"
-                               required>
+                               value="JCB 205: Excavator work done charges" required>
                         <i class="fas fa-pen"></i>
                     </div>
                 </div>
@@ -140,6 +113,91 @@ GST No: 29AABCA9292J1Z6">
 
 <!-- ================= SCRIPT ================= -->
 <script>
+const PARTY_DATA = {
+    AAKSHYA: {
+        address: `Aakshya Infra Projects PVT LTD
+Flat No: F2 MANYATA MAHOGANY F2
+MANYATA TECH PARK ROAD
+Bangalore Urban-560045
+Karnataka State
+GST No: 29AAXCA0889M1ZL`,
+        wo_numbers: ["6000000055"]
+    },
+
+    DAVANAGERE: {
+        address: `Ashok Buildcon Limited
+Sury No 69, Village – Neralgi Hobli
+Angodu Taluka
+Davanagere – Neralgi – Davanagere
+Karnataka Pin Code-577226
+GST No: 29AABCA9292J1Z6`,
+        wo_numbers: ["18020076-10-10", "18015821-10-10"]
+    },
+
+    TUMKUR_1: {
+        address: `Ashok Buildcon Limited
+Tumakur
+Sector No 1
+Tumakur Sec 1
+GST No: 29AABCA9292J1Z6`,
+        wo_numbers: ["18019662-10-10", "18020038-10-10"]
+    },
+
+    TUMKUR_2: {
+        address: `Ashok Buildcon Limited
+Tumakur
+Sector No 2
+Tumakur Sec II
+GST No: 29AABCA9292J1Z6`,
+        wo_numbers: ["18020039-10-10"]
+    }
+};
+
+function onPartyChange(key) {
+    const addressBox = document.getElementById("to_address");
+    const woSelect = document.getElementById("wo_number");
+
+    addressBox.value = "";
+    woSelect.innerHTML = `<option value="">-- Select WO Number --</option>`;
+
+    if (!key || !PARTY_DATA[key]) return;
+
+    addressBox.value = PARTY_DATA[key].address;
+
+    PARTY_DATA[key].wo_numbers.forEach(wo => {
+        const opt = document.createElement("option");
+        opt.value = wo;
+        opt.textContent = wo;
+        woSelect.appendChild(opt);
+    });
+
+    // Auto-select if only ONE WO
+    if (PARTY_DATA[key].wo_numbers.length === 1) {
+        woSelect.value = PARTY_DATA[key].wo_numbers[0];
+    }
+}
+
+// ---------------- SHIP TO ----------------
+const FIXED_SHIP_TO_ADDRESS = `AAKSHYA INFRA PROJECTS PVT LTD
+ADMINISTRATION BLOCK, Kempegowda International
+Airport Devanahalli, Bengaluru
+Karnataka 560300
+GST No- 29AAXCA0889M1ZL`;
+
+function toggleShipTo() {
+    const block = document.getElementById("shipToBlock");
+    const textarea = document.getElementById("ship_to_address");
+
+    if (block.style.display === "none") {
+        block.style.display = "block";
+        textarea.value = FIXED_SHIP_TO_ADDRESS;
+    } else {
+        block.style.display = "none";
+        textarea.value = "";
+    }
+}
+
+// ---------------- ITEMS ----------------
 function addItem() {
     const itemsDiv = document.getElementById("items");
     const div = document.createElement("div");
@@ -160,36 +218,6 @@ function addItem() {
         </div>
     `;
     itemsDiv.appendChild(div);
-}
-
-function fillToAddress(value) {
-    if (value) {
-        document.getElementById("to_address").value = value;
-    }
-}
-
-function toggleShipTo() {
-    const block = document.getElementById("shipToBlock");
-    block.style.display = block.style.display === "none" ? "block" : "none";
-}
-const FIXED_SHIP_TO_ADDRESS = `AAKSHYA INFRA PROJECTS PVT LTD
-ADMINISTRATION BLOCK, Kempegowda International
-Airport Devanahalli, Bengaluru, Bengaluru Urban
-Karnataka 560300
-Karnataka State
-GST No- 29AAXCA0889M1ZL`;
-
-function toggleShipTo() {
-    const block = document.getElementById("shipToBlock");
-    const textarea = document.getElementById("ship_to_address");
-
-    if (block.style.display === "none") {
-        block.style.display = "block";
-        textarea.value = FIXED_SHIP_TO_ADDRESS;
-    } else {
-        block.style.display = "none";
-        textarea.value = "";
-    }
 }
 </script>
 

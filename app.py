@@ -15,10 +15,21 @@ DB_NAME = 'invoice_db'
 def get_next_invoice_no():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT MAX(CAST(invoice_no AS UNSIGNED)) FROM invoices")
-    result = cur.fetchone()[0]
+    
+    # CHANGE 1: Select the invoice_no, order by ID (or created_at) DESC, limit to 1
+    # This ensures you get the most recently inserted row, regardless of the number's value.
+    cur.execute("SELECT invoice_no FROM invoices ORDER BY id DESC LIMIT 1")
+    
+    result = cur.fetchone()
     conn.close()
-    return str(result + 1) if result else "1"
+    
+    # CHANGE 2: Logic to handle the increment
+    if result:
+        last_invoice_no = result[0]
+        # Convert to int, add 1, convert back to string
+        return str(int(last_invoice_no) + 1)
+    else:
+        return "1"
 
 
 def init_db():
@@ -48,6 +59,7 @@ def init_db():
     cgst_amount DECIMAL(10,2) NOT NULL,
     sgst_amount DECIMAL(10,2) NOT NULL,
     total_amount DECIMAL(10,2) NOT NULL,
+    wo_number VARCHAR(50),
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
@@ -115,7 +127,7 @@ def generate_invoice_pdf(data):
     c.setFont("Helvetica", 9)
     c.drawString(meta_x, meta_y,        f"Date: {data['invoice_date']}")
     c.drawString(meta_x, meta_y - 14,   f"Invoice No.: {data['invoice_no']}")
-    c.drawString(meta_x, meta_y - 28,   "WO Number: 6000000055")
+    c.drawString(meta_x, meta_y - 28, f"WO Number: {data['wo_number']}")
     c.drawString(meta_x, meta_y - 42,   "Our PAN No: AHSPC4247N")
     c.drawString(meta_x, meta_y - 56,   "Our GST No: 29AHSPC4247N1ZP")
 
@@ -335,7 +347,9 @@ def download_invoice_pdf(invoice_id):
         "base_amount": float(invoice['base_amount']),
         "cgst_amount": float(invoice['cgst_amount']),
         "sgst_amount": float(invoice['sgst_amount']),
-        "total_amount": float(invoice['total_amount'])
+        "total_amount": float(invoice['total_amount']),
+        "wo_number": invoice['wo_number']
+
     })
 
     return send_file(
@@ -457,6 +471,8 @@ def calculate():
 
         to_address = request.form['to_address']
         ship_to_address = request.form.get('ship_to_address')
+        wo_number = request.form['wo_number']
+
 
         # ---------------- VALIDATION ----------------
         if not descriptions or not amounts:
@@ -485,8 +501,8 @@ def calculate():
         cur.execute("""
             INSERT INTO invoices
             (invoice_no, invoice_date, to_address, ship_to_address,
-             base_amount, cgst_amount, sgst_amount, total_amount)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+             base_amount, cgst_amount, sgst_amount, total_amount,wo_number)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             invoice_no,
             invoice_date,
@@ -495,7 +511,8 @@ def calculate():
             base_amount,
             cgst,
             sgst,
-            total
+            total,
+            wo_number
         ))
 
         invoice_id = cur.lastrowid
