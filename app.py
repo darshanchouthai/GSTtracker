@@ -5,6 +5,14 @@ from reportlab.lib.pagesizes import A4
 import io
 
 app = Flask(__name__)
+import os
+import qrcode
+from reportlab.lib.utils import ImageReader
+PUBLIC_BASE_URL = os.getenv(
+    "PUBLIC_BASE_URL",
+    "http://localhost:5000"
+)
+
 
 # ---------------- DATABASE CONFIG ----------------
 DB_HOST = 'localhost'
@@ -93,6 +101,8 @@ def generate_invoice_pdf(data):
     # ---- BANK DETAILS (ACTUAL / MASKED SUPPORT) ----
     account_no = data.get("account_no", "375901010032777")
     ifsc_code = data.get("ifsc", "UBIN0537594")
+    invoice_id = data.get("invoice_id")
+
 
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -105,6 +115,28 @@ def generate_invoice_pdf(data):
     c.rect(left, bottom, right - left, top - bottom)
 
     # ---------------- HEADER ----------------
+        # ---------------- QR CODE ----------------
+    invoice_id = data["invoice_id"]
+
+    qr_url = f"{PUBLIC_BASE_URL}/invoice/{invoice_id}/pdf"
+
+    qr = qrcode.make(qr_url)
+    qr_buffer = io.BytesIO()
+    qr.save(qr_buffer)
+    qr_buffer.seek(0)
+
+    c.drawImage(
+        ImageReader(qr_buffer),
+        right - 120,   # X position (right side)
+        top - 100,     # Y position (empty space)
+        width=80,
+        height=80,
+        mask='auto'
+    )
+    c.setFont("Helvetica", 7)
+    c.drawCentredString(right - 80, top - 110, "Scan to Download")
+
+
     c.setFont("Helvetica-Bold", 14)
     c.drawString(left + 10, top - 30, "GURUKRUPA EARTHMOVERS")
 
@@ -332,6 +364,7 @@ def download_invoice_pdf(invoice_id):
     amounts = [float(item['amount']) for item in items]
 
     pdf = generate_invoice_pdf({
+        "invoice_id": invoice['id'],
         "invoice_no": invoice['invoice_no'],
         "invoice_date": invoice['invoice_date'],
 
