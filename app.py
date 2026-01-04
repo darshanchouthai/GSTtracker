@@ -282,20 +282,32 @@ def generate_invoice_pdf(data):
             tax_start_y - row_gap * 3, bold=True, size=10)
 
     # ---------------- BANK DETAILS ----------------
+    # ---------------- BANK DETAILS LOGIC ----------------
+    wo_number = data.get("wo_number")
+
+    if wo_number == "6000000055":
+        bank_name = "HDFC Bank"
+        account_no = "50200092531586"
+        ifsc = "HDFC0001961"
+        branch = "BIJAPUR"
+    else:
+        bank_name = "Union Bank of India"
+        account_no = data.get("account_no", "375901010032777")
+        ifsc = data.get("ifsc", "UBIN0537594")
+        branch = "BLDE Road Vijayapur"
+
+    # ---------------- BANK DETAILS ----------------
     bank_y = table_bottom - 20
 
     c.setFont("Helvetica-Bold", 9)
     c.drawString(left + 10, bank_y, "Our Bank Details:")
 
     c.setFont("Helvetica", 9)
-    c.drawString(left + 10, bank_y - 14,
-                f"Account No: {account_no}")
-    c.drawString(left + 10, bank_y - 28,
-                "Bank Name: Union Bank of India")
-    c.drawString(left + 10, bank_y - 42,
-                "Branch: BLDE Road Vijayapur")
-    c.drawString(left + 10, bank_y - 56,
-                f"IFSC Code: {ifsc_code}")
+    c.drawString(left + 10, bank_y - 14, f"Account No: {account_no}")
+    c.drawString(left + 10, bank_y - 28, f"Bank Name: {bank_name}")
+    c.drawString(left + 10, bank_y - 42, f"Branch: {branch}")
+    c.drawString(left + 10, bank_y - 56, f"IFSC Code: {ifsc}")
+
 
 
     # ---------------- SIGNATURE ----------------
@@ -666,6 +678,19 @@ def download_masked_invoice_pdf(invoice_id):
         download_name=f"Invoice_{invoice['invoice_no']}_MASKED.pdf",
         mimetype="application/pdf"
     )
+
+@app.route('/delete/<int:invoice_id>', methods=['POST'])
+def delete_invoice(invoice_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Delete invoice (items auto-delete via ON DELETE CASCADE)
+    cur.execute("DELETE FROM invoices WHERE id = %s", (invoice_id,))
+
+    conn.commit()
+    conn.close()
+
+    return redirect('/history')
 
 
 

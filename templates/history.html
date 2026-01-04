@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
     <style>
-        /* ---------- MODAL ---------- */
+        /* ---------- MODALS ---------- */
         .modal {
             display: none;
             position: fixed;
@@ -39,6 +39,7 @@
             display: flex;
             gap: 10px;
             justify-content: center;
+            flex-wrap: wrap;
         }
 
         .modal-actions button {
@@ -49,20 +50,10 @@
             font-size: 14px;
         }
 
-        .btn-actual {
-            background: #28a745;
-            color: #fff;
-        }
-
-        .btn-masked {
-            background: #ffc107;
-            color: #000;
-        }
-
-        .btn-cancel {
-            background: #dc3545;
-            color: #fff;
-        }
+        .btn-actual { background: #28a745; color: #fff; }
+        .btn-masked { background: #ffc107; color: #000; }
+        .btn-cancel { background: #6c757d; color: #fff; }
+        .btn-delete { background: #dc3545; color: #fff; }
     </style>
 </head>
 <body>
@@ -113,13 +104,25 @@
                     <td>₹{{ inv.sgst_amount }}</td>
                     <td><strong>₹{{ inv.total_amount }}</strong></td>
                     <td class="actions">
-                        <a href="/edit/{{ inv.id }}" class="btn-icon btn-edit">
+                        <!-- EDIT -->
+                        <a href="/edit/{{ inv.id }}" class="btn-icon btn-edit" title="Edit">
                             <i class="fas fa-edit"></i>
                         </a>
+
+                        <!-- PDF -->
                         <a href="javascript:void(0)"
                            class="btn-icon btn-pdf"
+                           title="Download PDF"
                            onclick="openPdfModal({{ inv.id }})">
                             <i class="fas fa-file-pdf"></i>
+                        </a>
+
+                        <!-- DELETE -->
+                        <a href="javascript:void(0)"
+                           class="btn-icon btn-delete"
+                           title="Delete"
+                           onclick="openDeleteModal({{ inv.id }})">
+                            <i class="fas fa-trash"></i>
                         </a>
                     </td>
                 </tr>
@@ -137,7 +140,19 @@
         <div class="modal-actions">
             <button class="btn-actual" onclick="downloadActual()">Actual</button>
             <button class="btn-masked" onclick="downloadMasked()">Masked</button>
-            <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+            <button class="btn-cancel" onclick="closePdfModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ---------- DELETE MODAL ---------- -->
+<div class="modal" id="deleteModal">
+    <div class="modal-box">
+        <h3>Delete this invoice?</h3>
+        <p style="margin-bottom:15px;">This action cannot be undone.</p>
+        <div class="modal-actions">
+            <button class="btn-delete" onclick="confirmDelete()">Delete</button>
+            <button class="btn-cancel" onclick="closeDeleteModal()">Cancel</button>
         </div>
     </div>
 </div>
@@ -145,23 +160,37 @@
 <script>
 let selectedInvoiceId = null;
 
+/* ---------- PDF ---------- */
 function openPdfModal(id) {
     selectedInvoiceId = id;
     document.getElementById("pdfModal").style.display = "flex";
 }
-
-function closeModal() {
+function closePdfModal() {
     document.getElementById("pdfModal").style.display = "none";
 }
-
 function downloadActual() {
     window.location.href = `/invoice/${selectedInvoiceId}/pdf`;
-    closeModal();
+    closePdfModal();
 }
-
 function downloadMasked() {
     window.location.href = `/invoice/${selectedInvoiceId}/masked-pdf`;
-    closeModal();
+    closePdfModal();
+}
+
+/* ---------- DELETE ---------- */
+function openDeleteModal(id) {
+    selectedInvoiceId = id;
+    document.getElementById("deleteModal").style.display = "flex";
+}
+function closeDeleteModal() {
+    document.getElementById("deleteModal").style.display = "none";
+}
+function confirmDelete() {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = `/delete/${selectedInvoiceId}`;
+    document.body.appendChild(form);
+    form.submit();
 }
 </script>
 
